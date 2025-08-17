@@ -1,0 +1,78 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[project]
+name = "mkv-submerge"
+version = "0.1.0"
+description = "A powerful CLI tool for batch processing MKV video files that automatically detects missing subtitle tracks and merges matching SRT subtitle files using MKVToolNix. Features smart SRT-to-MKV matching, language detection, dry-run mode, and support for AI-translated subtitle marking."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [
+    { name = "GitBib", email = "job@bnff.website" },
+]
+keywords = ["mkv", "subtitles", "srt", "mkvtoolnix", "video", "cli"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Text Processing :: Linguistic",
+]
+dependencies = [
+    "natsort>=8.4.0",
+    "pymkv2>=2.1.1",
+    "typer>=0.16.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/mkv-submerge"
+Repository = "https://github.com/yourusername/mkv-submerge.git"
+Issues = "https://github.com/yourusername/mkv-submerge/issues"
+
+[project.scripts]
+mkv-submerge = "src.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+    "ruff>=0.12.9",
+]
+
+
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "S",    # bandit security
+    "C4",   # flake8-comprehensions
+    "PIE",  # flake8-pie
+    "RET",  # flake8-return
+    "SIM",  # flake8-simplify
+    "PTH",  # flake8-use-pathlib
+]
+ignore = [
+    "S603",  # subprocess call - check for execution of untrusted input (we use subprocess safely)
+    "S607",  # starting a process with a partial executable path (mkvmerge is expected in PATH)
+]
+
+[tool.uv]
+package = true
