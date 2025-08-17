@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from importlib.metadata import version
 from pathlib import Path
 
@@ -85,6 +86,9 @@ def run(
     ignore_mux_errors: bool = typer.Option(False, "--ignore-mux-errors", help="Ignore errors during mux operations"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
     dry_run: bool = typer.Option(False, "--dry-run"),
+    workers: int = typer.Option(
+        1, "--workers", "-w", min=1, max=8, help="Number of workers for concurrent processing (1-8)"
+    ),
     _: bool = typer.Option(False, "--version", callback=version_callback, help="Show version and exit"),
 ) -> None:
     cfg = read_config(config)
@@ -115,6 +119,9 @@ def run(
     if not ignore_mux_errors:
         ignore_mux_errors_val = cfg.get("ignore_mux_errors", False)
         ignore_mux_errors = ignore_mux_errors_val if isinstance(ignore_mux_errors_val, bool) else False
+    if workers == 1:
+        workers_val = cfg.get("workers", 1)
+        workers = workers_val if isinstance(workers_val, int) and 1 <= workers_val <= 8 else 1
 
     if root is None or check_lang is None:
         typer.echo("Must specify --root and --check-lang or config file.")
@@ -141,19 +148,47 @@ def run(
     mkv_files = list(natsorted(root_path.rglob("*.mkv")))
     typer.echo(f"📊 Found {len(mkv_files)} MKV files to scan")
 
-    for mkv in mkv_files:
-        process_single_mkv(
-            mkv=mkv,
-            lang_check=lang_check,
-            lang_set=lang_set,
-            root=root_path,
-            output_dir=output_dir_path,
-            ai_translated=ai_translated,
-            ignore_mux_errors=ignore_mux_errors,
-            verbose=verbose,
-            dry_run=dry_run,
-            stats=stats,
-        )
+    if workers == 1:
+        for mkv in mkv_files:
+            process_single_mkv(
+                mkv=mkv,
+                lang_check=lang_check,
+                lang_set=lang_set,
+                root=root_path,
+                output_dir=output_dir_path,
+                ai_translated=ai_translated,
+                ignore_mux_errors=ignore_mux_errors,
+                verbose=verbose,
+                dry_run=dry_run,
+                stats=stats,
+            )
+    else:
+        typer.echo(f"🚀 Processing with {workers} workers")
+
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            future_to_mkv = {
+                executor.submit(
+                    process_single_mkv,
+                    mkv=mkv,
+                    lang_check=lang_check,
+                    lang_set=lang_set,
+                    root=root_path,
+                    output_dir=output_dir_path,
+                    ai_translated=ai_translated,
+                    ignore_mux_errors=ignore_mux_errors,
+                    verbose=verbose,
+                    dry_run=dry_run,
+                    stats=stats,
+                ): mkv
+                for mkv in mkv_files
+            }
+
+            for future in as_completed(future_to_mkv):
+                mkv = future_to_mkv[future]
+                try:
+                    future.result()
+                except Exception as exc:
+                    typer.secho(f"✗ Error processing {mkv.name}: {exc}", fg="red", err=True)
 
     print_final_stats(stats)
 
