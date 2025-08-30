@@ -213,37 +213,38 @@ def extract_subtitle_from_mkv(track: MKVTrack, mkv_path: Path, lang: str, verbos
 
         if extracted_file.exists():
             final_extension = extracted_file.suffix
+
             if not final_extension:
                 codec = track.track_codec
                 final_extension = CODEC_TO_EXTENSION.get(codec, ".srt")
                 if verbose:
                     typer.echo(f"No extension detected, using codec '{codec}' -> {final_extension}")
+
             final_path = mkv_path.with_suffix(f".{lang}{final_extension}")
 
-            original_name = extracted_file.name
             if verbose:
-                typer.echo(f"Auto-generated file: {original_name}")
+                typer.echo(f"Auto-generated file: {extracted_file.name}")
                 typer.echo(f"Target file: {final_path.name}")
 
-            try:
-                needs_rename = original_name != final_path.name
+            original_name = extracted_file.name
+            success_name = final_path.name
 
-                if needs_rename:
+            try:
+                if extracted_file.name != final_path.name:
                     final_path.parent.mkdir(parents=True, exist_ok=True)
                     extracted_file.rename(final_path)
                     if verbose:
                         typer.echo(f"Successfully renamed: {original_name} → {final_path.name}")
-                    typer.secho(f"✓ Successfully extracted subtitle: {final_path.name}", fg="green")
                 else:
                     if verbose:
                         typer.echo("File already has correct name")
-                    typer.secho(f"✓ Successfully extracted subtitle: {original_name}", fg="green")
 
             except Exception as rename_error:
                 if verbose:
-                    typer.echo(f"Rename failed: {rename_error}")
-                    typer.echo("Keeping file with original name")
-                typer.secho(f"✓ Successfully extracted subtitle (original name): {original_name}", fg="yellow")
+                    typer.echo(f"Rename failed: {rename_error}, keeping original name")
+                success_name = original_name
+
+            typer.secho(f"✓ Successfully extracted subtitle: {success_name}", fg="green")
         else:
             typer.secho("✗ Extraction failed: temporary file not created", fg="red", err=True)
 

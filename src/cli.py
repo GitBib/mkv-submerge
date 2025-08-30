@@ -72,8 +72,10 @@ def process_single_mkv_export(
         if subtitle_track:
             if dry_run:
                 codec = subtitle_track.track_codec or "unknown"
+                track_language = subtitle_track.language or "unknown"
                 typer.echo(
-                    f"🎬 Would extract: {mkv.name} track {subtitle_track.track_id} ({codec}) with auto-detected format"
+                    f"🎬 Would extract: {mkv.name} track {subtitle_track.track_id} "
+                    f"({codec}) language:{track_language} with auto-detected format"
                 )
                 stats.processed += 1
                 return
