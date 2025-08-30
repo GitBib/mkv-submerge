@@ -7,6 +7,24 @@ from pymkv import MKVFile, MKVTrack
 
 from .language_utils import is_language_match
 
+CODEC_TO_EXTENSION = {
+    "S_TEXT/UTF8": ".srt",
+    "S_TEXT/ASS": ".ass",
+    "S_TEXT/SSA": ".ssa",
+    "S_TEXT/WEBVTT": ".vtt",
+    "S_HDMV/PGS": ".sup",
+    "S_DVBSUB": ".sub",
+    "S_VOBSUB": ".sub",
+    "S_TEXT/USF": ".usf",
+    "S_KATE": ".kate",
+    "SubStationAlpha": ".ass",
+    "SubRip/SRT": ".srt",
+    "WEBVTT": ".vtt",
+    "HDMV PGS": ".sup",
+    "DVB subtitles": ".sub",
+    "VobSub": ".sub",
+}
+
 
 def probe_subtitle_languages(mkv_path: Path, verbose: bool = False) -> set[str]:
     if verbose:
@@ -195,14 +213,37 @@ def extract_subtitle_from_mkv(track: MKVTrack, mkv_path: Path, lang: str, verbos
 
         if extracted_file.exists():
             final_extension = extracted_file.suffix
+            if not final_extension:
+                codec = track.track_codec
+                final_extension = CODEC_TO_EXTENSION.get(codec, ".srt")
+                if verbose:
+                    typer.echo(f"No extension detected, using codec '{codec}' -> {final_extension}")
             final_path = mkv_path.with_suffix(f".{lang}{final_extension}")
 
-            if extracted_file != final_path:
-                extracted_file.rename(final_path)
-                if verbose:
-                    typer.echo(f"Renamed to: {final_path.name}")
+            original_name = extracted_file.name
+            if verbose:
+                typer.echo(f"Auto-generated file: {original_name}")
+                typer.echo(f"Target file: {final_path.name}")
 
-            typer.secho(f"✓ Successfully extracted subtitle: {final_path.name}", fg="green")
+            try:
+                needs_rename = original_name != final_path.name
+
+                if needs_rename:
+                    final_path.parent.mkdir(parents=True, exist_ok=True)
+                    extracted_file.rename(final_path)
+                    if verbose:
+                        typer.echo(f"Successfully renamed: {original_name} → {final_path.name}")
+                    typer.secho(f"✓ Successfully extracted subtitle: {final_path.name}", fg="green")
+                else:
+                    if verbose:
+                        typer.echo("File already has correct name")
+                    typer.secho(f"✓ Successfully extracted subtitle: {original_name}", fg="green")
+
+            except Exception as rename_error:
+                if verbose:
+                    typer.echo(f"Rename failed: {rename_error}")
+                    typer.echo("Keeping file with original name")
+                typer.secho(f"✓ Successfully extracted subtitle (original name): {original_name}", fg="yellow")
         else:
             typer.secho("✗ Extraction failed: temporary file not created", fg="red", err=True)
 
