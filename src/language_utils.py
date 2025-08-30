@@ -1,3 +1,5 @@
+from functools import lru_cache
+
 LANGUAGE_MAPPING = {
     "ru": ["ru", "rus", "russian"],
     "en": ["en", "eng", "english"],
@@ -31,6 +33,7 @@ LANGUAGE_MAPPING = {
 }
 
 
+@lru_cache(maxsize=1024)
 def is_language_match(requested_lang: str, track_lang: str) -> bool:
     if not track_lang:
         return False
