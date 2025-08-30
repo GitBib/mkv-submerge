@@ -20,6 +20,15 @@ def print_final_stats(stats: ProcessingStats) -> None:
     typer.echo(f"Scanned MKV: {stats.total}, processed: {stats.processed}")
 
 
+def print_export_final_stats(stats: ProcessingStats) -> None:
+    typer.secho(
+        f"✅ Export completed: {stats.total} total, {stats.processed} exported, "
+        f"{stats.skipped_has_lang} skipped (exists), {stats.skipped_no_srt} skipped (not found)",
+        fg="cyan",
+    )
+    typer.echo(f"Scanned MKV: {stats.total}, exported subtitles: {stats.processed}")
+
+
 def print_processing_info(
     check_lang: str, set_lang: str, ai_translated: bool, ignore_mux_errors: bool, verbose: bool
 ) -> None:

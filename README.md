@@ -13,6 +13,7 @@ A powerful CLI tool for batch processing MKV video files that automatically dete
 - ⚙️ **Configuration files** - Save settings in TOML config files for reuse
 - 📊 **Progress tracking** - Detailed statistics and verbose output options
 - ⚡ **Concurrent processing** - Process multiple files simultaneously with configurable workers (1-8)
+- 📤 **Subtitle extraction** - Export subtitles from MKV files with language priority support
 
 ## 🚀 Installation
 
@@ -36,6 +37,23 @@ mkv-submerge \
   --check-lang ru \
   --set-lang rus
 ```
+
+### Export Subtitles
+
+Extract subtitles from MKV files with language priority:
+
+```bash
+mkv-submerge export \
+  --root "/path/to/video/files" \
+  --languages "ru,en,ja" \
+  --verbose
+```
+
+This command will:
+1. Scan all MKV files in the directory
+2. For each file, check if subtitles already exist (e.g., `movie.ru.srt`)
+3. If not found, check for subtitles inside the MKV file by priority order
+4. Extract the first found subtitle track to an SRT file next to the MKV
 
 ### Advanced Example
 
@@ -81,6 +99,17 @@ mkv-submerge \
 | `--workers` | `-w` | Number of workers for concurrent processing (1-8, default: 1) | ❌ |
 | `--version` | | Show version information | ❌ |
 
+### Export Command Options
+
+| Option | Short | Description | Required |
+|--------|-------|-------------|----------|
+| `--root` | `-r` | Root directory containing MKV files | ✅ |
+| `--languages` | `-l` | Language priority order, comma-separated (e.g., 'ru,en,ja') | ✅ |
+| `--config` | | Path to TOML configuration file | ❌ |
+| `--verbose` | `-v` | Verbose output with detailed progress | ❌ |
+| `--dry-run` | | Preview mode - show what would be extracted | ❌ |
+| `--workers` | `-w` | Number of workers for concurrent processing (1-8, default: 1) | ❌ |
+
 ## ⚙️ Configuration File
 
 Create a TOML configuration file to save your settings:
@@ -95,11 +124,14 @@ ai_translated = true
 ignore_mux_errors = true
 verbose = false
 workers = 4
+languages = "ru,en,ja"  # For export command
 ```
 
 Usage with config file:
 ```bash
 mkv-submerge --config config.toml
+# or for export
+mkv-submerge export --config config.toml
 ```
 
 ## 🔍 How It Works

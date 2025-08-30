@@ -22,4 +22,6 @@ def read_config(path: str | None) -> dict[str, str | bool | None]:
         "ai_translated": section.get("ai_translated", False),
         "ignore_mux_errors": section.get("ignore_mux_errors", False),
         "verbose": section.get("verbose", False),
+        "workers": section.get("workers", 1),
+        "languages": section.get("languages"),
     }

@@ -6,8 +6,22 @@ import typer
 from natsort import natsorted
 
 from .config import read_config
-from .mkv_operations import compute_output_path, find_srt_file, mux_with_subtitle, probe_subtitle_languages
-from .stats import ProcessingStats, print_final_stats, print_output_info, print_processing_info
+from .language_utils import has_language_in_set
+from .mkv_operations import (
+    compute_output_path,
+    extract_subtitle_from_mkv,
+    find_srt_file,
+    find_subtitle_track_in_mkv,
+    mux_with_subtitle,
+    probe_subtitle_languages,
+)
+from .stats import (
+    ProcessingStats,
+    print_export_final_stats,
+    print_final_stats,
+    print_output_info,
+    print_processing_info,
+)
 
 app = typer.Typer(add_completion=False)
 
@@ -29,6 +43,48 @@ def version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
+def process_single_mkv_export(
+    mkv: Path,
+    language_priority: list[str],
+    verbose: bool,
+    dry_run: bool,
+    stats: ProcessingStats,
+) -> None:
+    stats.total += 1
+    if verbose:
+        typer.echo(f"🔄 Processing file {stats.total}: {mkv.name}")
+
+    for lang in language_priority:
+        if verbose:
+            typer.echo(f"🔍 Checking for existing {lang} subtitle file...")
+
+        existing_srt = find_srt_file(mkv, lang, verbose)
+        if existing_srt:
+            if verbose:
+                typer.echo(f"⏭️  Skipping {mkv.name}: {lang} subtitle already exists ({existing_srt.name})")
+            stats.skipped_has_lang += 1
+            return
+
+        if verbose:
+            typer.echo(f"🎬 Checking for {lang} subtitles inside MKV...")
+
+        subtitle_track = find_subtitle_track_in_mkv(mkv, lang, verbose)
+        if subtitle_track:
+            output_path = mkv.with_suffix(f".{lang}.srt")
+            if dry_run:
+                typer.echo(f"🎬 Would extract: {mkv.name} track {subtitle_track.track_id} to {output_path.name}")
+                stats.processed += 1
+                return
+
+            extract_subtitle_from_mkv(subtitle_track, output_path, verbose)
+            stats.processed += 1
+            return
+
+    if verbose:
+        typer.echo(f"⏭️  Skipping {mkv.name}: no suitable subtitles found for {language_priority}")
+    stats.skipped_no_srt += 1
+
+
 def process_single_mkv(
     mkv: Path,
     lang_check: str,
@@ -46,7 +102,7 @@ def process_single_mkv(
         typer.echo(f"🔄 Processing file {stats.total}: {mkv.name}")
 
     langs = probe_subtitle_languages(mkv, verbose)
-    if lang_set in langs:
+    if has_language_in_set(lang_set, langs):
         if verbose:
             typer.echo(f"⏭️  Skipping {mkv.name}: already has {lang_set} subtitles")
         stats.skipped_has_lang += 1
@@ -191,6 +247,98 @@ def run(
                     typer.secho(f"✗ Error processing {mkv.name}: {exc}", fg="red", err=True)
 
     print_final_stats(stats)
+
+
+@app.command()
+def export(
+    root: str | None = typer.Option(None, "--root", "-r", exists=True, file_okay=False, dir_okay=True),
+    languages: str | None = typer.Option(
+        None, "--languages", "-l", help="Language priority order, comma-separated (e.g., 'ru,en,ja')"
+    ),
+    config: str | None = typer.Option(None, "--config"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
+    dry_run: bool = typer.Option(False, "--dry-run"),
+    workers: int = typer.Option(
+        1, "--workers", "-w", min=1, max=8, help="Number of workers for concurrent processing (1-8)"
+    ),
+) -> None:
+    cfg = read_config(config)
+
+    if not verbose:
+        verbose_val = cfg.get("verbose", False)
+        verbose = verbose_val if isinstance(verbose_val, bool) else False
+
+    if verbose:
+        typer.echo("🚀 Starting mkv-submerge export")
+        typer.echo(f"📄 Configuration loaded from: {config}")
+
+    if root is None and cfg.get("root"):
+        root_val = cfg["root"]
+        root = root_val if isinstance(root_val, str) else None
+
+    if languages is None and cfg.get("languages"):
+        languages_val = cfg["languages"]
+        languages = languages_val if isinstance(languages_val, str) else None
+
+    if workers == 1:
+        workers_val = cfg.get("workers", 1)
+        workers = workers_val if isinstance(workers_val, int) and 1 <= workers_val <= 8 else 1
+
+    if root is None:
+        typer.echo("Must specify --root directory or config file.")
+        raise typer.Exit(code=2)
+
+    if not languages:
+        typer.echo("Must specify --languages priority order or config file.")
+        raise typer.Exit(code=2)
+
+    root_path = Path(root)
+    language_priority = [lang.strip().lower() for lang in languages.split(",") if lang.strip()]
+
+    if not language_priority:
+        typer.echo("Invalid --languages format. Use comma-separated values like 'ru,en,ja'")
+        raise typer.Exit(code=2)
+
+    typer.echo(f"📁 Scanning directory: {root_path}")
+    typer.echo(f"🌐 Language priority: {' → '.join(language_priority)}")
+
+    stats = ProcessingStats()
+    mkv_files = list(natsorted(root_path.rglob("*.mkv")))
+    typer.echo(f"📊 Found {len(mkv_files)} MKV files to scan")
+
+    if workers == 1:
+        for mkv in mkv_files:
+            process_single_mkv_export(
+                mkv=mkv,
+                language_priority=language_priority,
+                verbose=verbose,
+                dry_run=dry_run,
+                stats=stats,
+            )
+    else:
+        typer.echo(f"🚀 Processing with {workers} workers")
+
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            future_to_mkv = {
+                executor.submit(
+                    process_single_mkv_export,
+                    mkv=mkv,
+                    language_priority=language_priority,
+                    verbose=verbose,
+                    dry_run=dry_run,
+                    stats=stats,
+                ): mkv
+                for mkv in mkv_files
+            }
+
+            for future in as_completed(future_to_mkv):
+                mkv = future_to_mkv[future]
+                try:
+                    future.result()
+                except Exception as exc:
+                    typer.secho(f"✗ Error processing {mkv.name}: {exc}", fg="red", err=True)
+
+    print_export_final_stats(stats)
 
 
 def main() -> None:

@@ -5,6 +5,8 @@ import typer
 from natsort import natsorted
 from pymkv import MKVFile, MKVTrack
 
+from .language_utils import is_language_match
+
 
 def probe_subtitle_languages(mkv_path: Path, verbose: bool = False) -> set[str]:
     if verbose:
@@ -144,3 +146,62 @@ def mux_with_subtitle(
             raise
 
     handle_file_operations(tmp, output_path, mkv_path, verbose)
+
+
+def find_subtitle_track_in_mkv(mkv_path: Path, lang: str, verbose: bool = False) -> MKVTrack | None:
+    if verbose:
+        typer.echo(f"Searching for {lang} subtitles inside: {mkv_path}")
+
+    try:
+        mkv = MKVFile(mkv_path)
+
+        for track in mkv.tracks:
+            if track.track_type != "subtitles":
+                continue
+
+            track_lang = track.language
+            track_id = track.track_id
+
+            if verbose:
+                typer.echo(f"Found subtitle track {track_id}: language={track_lang}")
+
+            if is_language_match(lang, track_lang):
+                if verbose:
+                    typer.echo(f"Match found! Track {track_id} language '{track_lang}' matches requested '{lang}'")
+                return track
+
+        if verbose:
+            typer.echo(f"No {lang} subtitle track found in {mkv_path.name}")
+        return None
+
+    except Exception as e:
+        typer.secho(f"Failed to probe subtitle tracks in {mkv_path}: {e}", fg="yellow", err=True)
+        return None
+
+
+def extract_subtitle_from_mkv(track: MKVTrack, output_path: Path, verbose: bool = False) -> None:
+    if verbose:
+        typer.echo(f"Extracting subtitle track {track.track_id} to {output_path.name}")
+
+    try:
+        if verbose:
+            typer.echo("Using pymkv2 MKVTrack.extract() method")
+
+        extracted_path = track.extract(output_path=None, silent=not verbose)
+        extracted_file = Path(extracted_path)
+
+        if verbose:
+            typer.echo(f"Track extracted to: {extracted_file.name}")
+
+        if extracted_file.exists():
+            if extracted_file != output_path:
+                extracted_file.rename(output_path)
+                if verbose:
+                    typer.echo(f"Renamed to: {output_path.name}")
+
+            typer.secho(f"✓ Successfully extracted subtitle: {output_path.name}", fg="green")
+        else:
+            typer.secho("✗ Extraction failed: temporary file not created", fg="red", err=True)
+
+    except Exception as e:
+        typer.secho(f"✗ Extraction failed for track {track.track_id}: {e}", fg="red", err=True)
