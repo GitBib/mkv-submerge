@@ -70,13 +70,15 @@ def process_single_mkv_export(
 
         subtitle_track = find_subtitle_track_in_mkv(mkv, lang, verbose)
         if subtitle_track:
-            output_path = mkv.with_suffix(f".{lang}.srt")
             if dry_run:
-                typer.echo(f"🎬 Would extract: {mkv.name} track {subtitle_track.track_id} to {output_path.name}")
+                codec = subtitle_track.track_codec or "unknown"
+                typer.echo(
+                    f"🎬 Would extract: {mkv.name} track {subtitle_track.track_id} ({codec}) with auto-detected format"
+                )
                 stats.processed += 1
                 return
 
-            extract_subtitle_from_mkv(subtitle_track, output_path, verbose)
+            extract_subtitle_from_mkv(subtitle_track, mkv, lang, verbose)
             stats.processed += 1
             return
 

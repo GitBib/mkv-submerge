@@ -179,13 +179,13 @@ def find_subtitle_track_in_mkv(mkv_path: Path, lang: str, verbose: bool = False)
         return None
 
 
-def extract_subtitle_from_mkv(track: MKVTrack, output_path: Path, verbose: bool = False) -> None:
+def extract_subtitle_from_mkv(track: MKVTrack, mkv_path: Path, lang: str, verbose: bool = False) -> None:
     if verbose:
-        typer.echo(f"Extracting subtitle track {track.track_id} to {output_path.name}")
+        typer.echo(f"Extracting subtitle track {track.track_id} ({track.track_codec}) for language {lang}")
 
     try:
         if verbose:
-            typer.echo("Using pymkv2 MKVTrack.extract() method")
+            typer.echo("Using pymkv2 MKVTrack.extract() - it will determine the correct format automatically")
 
         extracted_path = track.extract(output_path=None, silent=not verbose)
         extracted_file = Path(extracted_path)
@@ -194,12 +194,15 @@ def extract_subtitle_from_mkv(track: MKVTrack, output_path: Path, verbose: bool 
             typer.echo(f"Track extracted to: {extracted_file.name}")
 
         if extracted_file.exists():
-            if extracted_file != output_path:
-                extracted_file.rename(output_path)
-                if verbose:
-                    typer.echo(f"Renamed to: {output_path.name}")
+            final_extension = extracted_file.suffix
+            final_path = mkv_path.with_suffix(f".{lang}{final_extension}")
 
-            typer.secho(f"✓ Successfully extracted subtitle: {output_path.name}", fg="green")
+            if extracted_file != final_path:
+                extracted_file.rename(final_path)
+                if verbose:
+                    typer.echo(f"Renamed to: {final_path.name}")
+
+            typer.secho(f"✓ Successfully extracted subtitle: {final_path.name}", fg="green")
         else:
             typer.secho("✗ Extraction failed: temporary file not created", fg="red", err=True)
 
