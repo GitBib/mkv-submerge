@@ -20,14 +20,14 @@ repos:
       - id: detect-private-key
 
   - repo: https://github.com/astral-sh/uv-pre-commit
-    rev: '0.8.11'
+    rev: '0.8.14'
     hooks:
       - id: uv-lock
       - id: uv-sync
 
   # Run the Ruff linter.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.12.9
+    rev: v0.12.11
     hooks:
       # Linter
       - id: ruff
