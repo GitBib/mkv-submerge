@@ -25,6 +25,8 @@ CODEC_TO_EXTENSION = {
     "VobSub": ".sub",
 }
 
+SUBTITLE_EXTENSIONS = [".srt", ".ass", ".ssa", ".vtt", ".sup", ".sub", ".usf", ".kate"]
+
 
 def probe_subtitle_languages(mkv_path: Path, verbose: bool = False) -> set[str]:
     if verbose:
@@ -52,19 +54,21 @@ def find_srt_file(mkv_path: Path, check_lang: str, verbose: bool = False) -> Pat
     if verbose:
         typer.echo(f"Looking for {lang} subtitles for: {mkv_path.name}")
 
-    exact = mkv_path.with_suffix(f".{lang}.srt")
-    if exact.exists():
-        if verbose:
-            typer.echo(f"Found exact match: {exact.name}")
-        return exact
-
     stem = mkv_path.with_suffix("").name
-    pattern = f"{stem}.*.{lang}.srt"
-    if candidates := list(mkv_path.parent.glob(pattern)):
-        selected = natsorted(candidates)[0]
-        if verbose:
-            typer.echo(f"Found pattern match: {selected.name} (from {len(candidates)} candidates)")
-        return selected
+
+    for ext in SUBTITLE_EXTENSIONS:
+        exact = mkv_path.with_suffix(f".{lang}{ext}")
+        if exact.exists():
+            if verbose:
+                typer.echo(f"Found exact match: {exact.name}")
+            return exact
+
+        pattern = f"{stem}.*.{lang}{ext}"
+        if candidates := list(mkv_path.parent.glob(pattern)):
+            selected = natsorted(candidates)[0]
+            if verbose:
+                typer.echo(f"Found pattern match: {selected.name} (from {len(candidates)} candidates)")
+            return selected
 
     if verbose:
         typer.echo(f"No {lang} subtitles found for: {mkv_path.name}")
@@ -214,37 +218,32 @@ def extract_subtitle_from_mkv(track: MKVTrack, mkv_path: Path, lang: str, verbos
         if extracted_file.exists():
             final_extension = extracted_file.suffix
 
-            if not final_extension:
+            if not final_extension or "_[" in final_extension:
                 codec = track.track_codec
                 final_extension = CODEC_TO_EXTENSION.get(codec, ".srt")
                 if verbose:
-                    typer.echo(f"No extension detected, using codec '{codec}' -> {final_extension}")
+                    typer.echo(f"Using codec '{codec}' -> '{final_extension}'")
 
-            final_path = mkv_path.with_suffix(f".{lang}{final_extension}")
+            mkv_stem = mkv_path.stem
+            final_path = mkv_path.parent / f"{mkv_stem}.{lang}{final_extension}"
 
             if verbose:
                 typer.echo(f"Auto-generated file: {extracted_file.name}")
                 typer.echo(f"Target file: {final_path.name}")
 
             original_name = extracted_file.name
-            success_name = final_path.name
 
             try:
-                if extracted_file.name != final_path.name:
-                    final_path.parent.mkdir(parents=True, exist_ok=True)
-                    extracted_file.rename(final_path)
-                    if verbose:
-                        typer.echo(f"Successfully renamed: {original_name} → {final_path.name}")
-                else:
-                    if verbose:
-                        typer.echo("File already has correct name")
+                final_path.parent.mkdir(parents=True, exist_ok=True)
+                extracted_file.rename(final_path)
+                if verbose:
+                    typer.echo(f"Renamed: {original_name} → {final_path.name}")
+                typer.secho(f"✓ Successfully extracted subtitle: {final_path.name}", fg="green")
 
             except Exception as rename_error:
                 if verbose:
                     typer.echo(f"Rename failed: {rename_error}, keeping original name")
-                success_name = original_name
-
-            typer.secho(f"✓ Successfully extracted subtitle: {success_name}", fg="green")
+                typer.secho(f"✓ Successfully extracted subtitle: {original_name}", fg="yellow")
         else:
             typer.secho("✗ Extraction failed: temporary file not created", fg="red", err=True)
 
