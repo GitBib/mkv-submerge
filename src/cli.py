@@ -5,6 +5,7 @@ from pathlib import Path
 import typer
 from natsort import natsorted
 
+from .ass_operations import convert_ass_to_srt
 from .config import read_config
 from .language_utils import has_language_in_set
 from .mkv_operations import (
@@ -131,7 +132,7 @@ def process_single_mkv(
     stats.processed += 1
 
 
-@app.command()
+@app.command(help="Merge MKV files with external SRT subtitles")
 def run(
     root: str | None = typer.Option(None, "--root", "-r", exists=True, file_okay=False, dir_okay=True),
     check_lang: str | None = typer.Option(
@@ -253,7 +254,98 @@ def run(
     print_final_stats(stats)
 
 
-@app.command()
+@app.command(name="to-srt", help="Convert ASS files to SRT format")
+def convert(
+    root: str | None = typer.Option(None, "--root", "-r", exists=True, file_okay=False, dir_okay=True),
+    config: str | None = typer.Option(None, "--config"),
+    removing_effects: bool = typer.Option(False, "--removing-effects", help="Remove effects from the text"),
+    remove_duplicates: bool = typer.Option(
+        False, "--remove-duplicates", help="Remove and merge consecutive duplicate dialogues"
+    ),
+    cleanup: bool = typer.Option(False, "--cleanup", "-c", help="Delete ASS files after successful conversion"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
+    dry_run: bool = typer.Option(False, "--dry-run"),
+    workers: int = typer.Option(
+        1, "--workers", "-w", min=1, max=8, help="Number of workers for concurrent processing (1-8)"
+    ),
+) -> None:
+    cfg = read_config(config)
+
+    if not verbose:
+        verbose_val = cfg.get("verbose", False)
+        verbose = verbose_val if isinstance(verbose_val, bool) else False
+
+    if verbose:
+        typer.echo("🚀 Starting ASS to SRT conversion")
+        typer.echo(f"📄 Configuration loaded from: {config}")
+
+    if root is None and cfg.get("root"):
+        root_val = cfg["root"]
+        root = root_val if isinstance(root_val, str) else None
+
+    if workers == 1:
+        workers_val = cfg.get("workers", 1)
+        workers = workers_val if isinstance(workers_val, int) and 1 <= workers_val <= 8 else 1
+
+    if root is None:
+        typer.echo("Must specify --root directory or config file.")
+        raise typer.Exit(code=2)
+
+    root_path = Path(root)
+
+    typer.echo(f"📁 Scanning directory: {root_path}")
+
+    if removing_effects:
+        typer.echo("🎨 Will remove effects from text")
+    if remove_duplicates:
+        typer.echo("🔄 Will remove consecutive duplicate dialogues")
+    if cleanup:
+        typer.echo("🗑️  Will delete ASS files after successful conversion")
+
+    stats = ProcessingStats()
+    ass_files = list(natsorted(root_path.rglob("*.ass")))
+    typer.echo(f"📊 Found {len(ass_files)} ASS files to convert")
+
+    if workers == 1:
+        for ass_file in ass_files:
+            convert_ass_to_srt(
+                ass_file=ass_file,
+                removing_effects=removing_effects,
+                remove_duplicates=remove_duplicates,
+                cleanup=cleanup,
+                verbose=verbose,
+                dry_run=dry_run,
+                stats=stats,
+            )
+    else:
+        typer.echo(f"🚀 Processing with {workers} workers")
+
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            future_to_ass = {
+                executor.submit(
+                    convert_ass_to_srt,
+                    ass_file=ass_file,
+                    removing_effects=removing_effects,
+                    remove_duplicates=remove_duplicates,
+                    cleanup=cleanup,
+                    verbose=verbose,
+                    dry_run=dry_run,
+                    stats=stats,
+                ): ass_file
+                for ass_file in ass_files
+            }
+
+            for future in as_completed(future_to_ass):
+                ass_file = future_to_ass[future]
+                try:
+                    future.result()
+                except Exception as exc:
+                    typer.secho(f"✗ Error processing {ass_file.name}: {exc}", fg="red", err=True)
+
+    print_final_stats(stats)
+
+
+@app.command(help="Extract subtitles from MKV files to separate SRT files")
 def export(
     root: str | None = typer.Option(None, "--root", "-r", exists=True, file_okay=False, dir_okay=True),
     languages: str | None = typer.Option(
