@@ -1,3 +1,4 @@
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -119,11 +120,17 @@ def handle_file_operations(tmp: Path, output_path: Path, mkv_path: Path, verbose
             output_path.unlink()
             if verbose:
                 typer.echo("Removed existing output file")
-        tmp.replace(output_path)
+        try:
+            tmp.replace(output_path)
+        except OSError:
+            shutil.move(str(tmp), str(output_path))
         if verbose:
             typer.echo("Moved to final output location")
     elif tmp != output_path:
-        tmp.replace(mkv_path)
+        try:
+            tmp.replace(mkv_path)
+        except OSError:
+            shutil.move(str(tmp), str(mkv_path))
         if verbose:
             typer.echo("Replaced original file")
 
@@ -143,7 +150,7 @@ def mux_with_subtitle(
         typer.echo(f"Output: {output_path}")
 
     if output_path == mkv_path:
-        with tempfile.NamedTemporaryFile(delete=False, dir=str(mkv_path.parent), suffix=".mkv") as f:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mkv") as f:
             tmp = Path(f.name)
         if verbose:
             typer.echo(f"Using temporary file: {tmp.name}")
@@ -206,44 +213,43 @@ def extract_subtitle_from_mkv(track: MKVTrack, mkv_path: Path, lang: str, verbos
         typer.echo(f"Extracting subtitle track {track.track_id} ({track.track_codec}) for language {lang}")
 
     try:
-        if verbose:
-            typer.echo("Using pymkv2 MKVTrack.extract() - it will determine the correct format automatically")
+        codec = track.track_codec
+        extension = CODEC_TO_EXTENSION.get(codec, ".srt")
 
-        extracted_path = track.extract(output_path=None, silent=not verbose)
+        mkv_stem = mkv_path.stem
+        final_path = mkv_path.parent / f"{mkv_stem}.{lang}{extension}"
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=extension) as tmp_file:
+            temp_output = Path(tmp_file.name)
+
+        if verbose:
+            typer.echo(f"Using codec '{codec}' -> '{extension}'")
+            typer.echo(f"Temporary file: {temp_output.name}")
+            typer.echo(f"Target file: {final_path.name}")
+
+        extracted_path = track.extract(output_path=str(temp_output), silent=not verbose)
         extracted_file = Path(extracted_path)
 
         if verbose:
             typer.echo(f"Track extracted to: {extracted_file.name}")
 
         if extracted_file.exists():
-            final_extension = extracted_file.suffix
-
-            if not final_extension or "_[" in final_extension:
-                codec = track.track_codec
-                final_extension = CODEC_TO_EXTENSION.get(codec, ".srt")
-                if verbose:
-                    typer.echo(f"Using codec '{codec}' -> '{final_extension}'")
-
-            mkv_stem = mkv_path.stem
-            final_path = mkv_path.parent / f"{mkv_stem}.{lang}{final_extension}"
-
-            if verbose:
-                typer.echo(f"Auto-generated file: {extracted_file.name}")
-                typer.echo(f"Target file: {final_path.name}")
-
-            original_name = extracted_file.name
-
             try:
                 final_path.parent.mkdir(parents=True, exist_ok=True)
-                extracted_file.rename(final_path)
+                if final_path.exists():
+                    final_path.unlink()
+                try:
+                    extracted_file.rename(final_path)
+                except OSError:
+                    shutil.move(str(extracted_file), str(final_path))
                 if verbose:
-                    typer.echo(f"Renamed: {original_name} → {final_path.name}")
+                    typer.echo(f"Moved: {extracted_file.name} → {final_path.name}")
                 typer.secho(f"✓ Successfully extracted subtitle: {final_path.name}", fg="green")
 
             except Exception as rename_error:
                 if verbose:
                     typer.echo(f"Rename failed: {rename_error}, keeping original name")
-                typer.secho(f"✓ Successfully extracted subtitle: {original_name}", fg="yellow")
+                typer.secho(f"✓ Successfully extracted subtitle: {extracted_file.name}", fg="yellow")
         else:
             typer.secho("✗ Extraction failed: temporary file not created", fg="red", err=True)
 
