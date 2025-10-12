@@ -219,39 +219,39 @@ def extract_subtitle_from_mkv(track: MKVTrack, mkv_path: Path, lang: str, verbos
         mkv_stem = mkv_path.stem
         final_path = mkv_path.parent / f"{mkv_stem}.{lang}{extension}"
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=extension) as tmp_file:
-            temp_output = Path(tmp_file.name)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_output = Path(temp_dir)
 
-        if verbose:
-            typer.echo(f"Using codec '{codec}' -> '{extension}'")
-            typer.echo(f"Temporary file: {temp_output.name}")
-            typer.echo(f"Target file: {final_path.name}")
+            if verbose:
+                typer.echo(f"Using codec '{codec}' -> '{extension}'")
+                typer.echo(f"Temporary directory: {temp_output}")
+                typer.echo(f"Target file: {final_path.name}")
 
-        extracted_path = track.extract(output_path=str(temp_output), silent=not verbose)
-        extracted_file = Path(extracted_path)
+            extracted_path = track.extract(output_path=str(temp_output), silent=not verbose)
+            extracted_file = Path(extracted_path)
 
-        if verbose:
-            typer.echo(f"Track extracted to: {extracted_file.name}")
+            if verbose:
+                typer.echo(f"Track extracted to: {extracted_file}")
 
-        if extracted_file.exists():
-            try:
-                final_path.parent.mkdir(parents=True, exist_ok=True)
-                if final_path.exists():
-                    final_path.unlink()
+            if extracted_file.exists():
                 try:
-                    extracted_file.rename(final_path)
-                except OSError:
-                    shutil.move(str(extracted_file), str(final_path))
-                if verbose:
-                    typer.echo(f"Moved: {extracted_file.name} → {final_path.name}")
-                typer.secho(f"✓ Successfully extracted subtitle: {final_path.name}", fg="green")
+                    final_path.parent.mkdir(parents=True, exist_ok=True)
+                    if final_path.exists():
+                        final_path.unlink()
+                    try:
+                        shutil.copy2(str(extracted_file), str(final_path))
+                    except OSError:
+                        shutil.move(str(extracted_file), str(final_path))
+                    if verbose:
+                        typer.echo(f"Copied: {extracted_file.name} → {final_path.name}")
+                    typer.secho(f"✓ Successfully extracted subtitle: {final_path.name}", fg="green")
 
-            except Exception as rename_error:
-                if verbose:
-                    typer.echo(f"Rename failed: {rename_error}, keeping original name")
-                typer.secho(f"✓ Successfully extracted subtitle: {extracted_file.name}", fg="yellow")
-        else:
-            typer.secho("✗ Extraction failed: temporary file not created", fg="red", err=True)
+                except Exception as rename_error:
+                    if verbose:
+                        typer.echo(f"Copy failed: {rename_error}")
+                    typer.secho(f"✗ Failed to save extracted subtitle: {rename_error}", fg="red", err=True)
+            else:
+                typer.secho("✗ Extraction failed: temporary file not created", fg="red", err=True)
 
     except Exception as e:
         typer.secho(f"✗ Extraction failed for track {track.track_id}: {e}", fg="red", err=True)
