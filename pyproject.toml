@@ -7,7 +7,7 @@ packages = ["src"]
 
 [project]
 name = "mkv-submerge"
-version = "0.3.5"
+version = "0.3.6"
 description = "A powerful CLI tool for batch processing MKV video files that automatically detects missing subtitle tracks and merges matching SRT subtitle files using MKVToolNix. Features smart SRT-to-MKV matching, language detection, dry-run mode, and support for AI-translated subtitle marking."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -30,9 +30,9 @@ classifiers = [
 ]
 dependencies = [
     "natsort>=8.4.0",
-    "pyasstosrt>=1.4.3",
+    "pyasstosrt>=1.5.0",
     "pymkv2>=2.1.2",
-    "typer>=0.19.2",
+    "typer>=0.20.0",
 ]
 
 [project.urls]
@@ -45,8 +45,8 @@ mkv-submerge = "src.cli:main"
 
 [dependency-groups]
 dev = [
-    "pytest>=8.4.2",
-    "ruff>=0.13.3",
+    "pytest>=9.0.1",
+    "ruff>=0.14.7",
 ]
 
 

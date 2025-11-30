@@ -1,9 +1,11 @@
+import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from importlib.metadata import version
 from pathlib import Path
 
 import typer
 from natsort import natsorted
+from pyasstosrt import Subtitle
 
 from .ass_operations import convert_ass_to_srt
 from .config import read_config
@@ -128,8 +130,43 @@ def process_single_mkv(
         stats.processed += 1
         return
 
-    mux_with_subtitle(mkv, srt, lang_set, target, ai_translated, ignore_mux_errors, verbose)
-    stats.processed += 1
+    # Process SRT with pyasstosrt before muxing
+    try:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            if verbose:
+                typer.echo(f"🔧 Processing SRT with pyasstosrt: {srt.name}")
+
+            subtitle = Subtitle(filepath=srt)
+            subtitle.convert()
+            subtitle.export(output_dir=temp_dir)
+
+            # pyasstosrt exports with the same filename
+            processed_srt = Path(temp_dir) / srt.name
+
+            if not processed_srt.exists():
+                # Fallback if export name is different or failed (shouldn't happen with standard usage)
+                typer.secho(f"⚠️  Processed SRT not found at {processed_srt}, using original", fg="yellow")
+                mux_with_subtitle(mkv, srt, lang_set, target, ai_translated, ignore_mux_errors, verbose)
+            else:
+                mux_with_subtitle(mkv, processed_srt, lang_set, target, ai_translated, ignore_mux_errors, verbose)
+
+            stats.processed += 1
+
+    except Exception as e:
+        typer.secho(f"✗ Error processing SRT {srt.name} with pyasstosrt: {e}", fg="red", err=True)
+        # Fallback to original SRT if processing fails?
+        # The user requirement said "only those SRTs that need to be added... after all checks".
+        # If processing fails, maybe we should abort or warn.
+        # Let's warn and try with original, or just fail?
+        # User said "need to run them through...". Implies it's a requirement.
+        # But if it fails, maybe better to fail the file than add bad subs?
+        # For now, I will fail this file to be safe, or I can try to mux original with warning.
+        # Given "need to run them through", I'll treat it as a required step.
+        typer.secho(f"⚠️  Skipping muxing for {mkv.name} due to SRT processing error", fg="red")
+        # We don't increment processed here if we skip? Or maybe we do?
+        # Existing code didn't have this try/except block around muxing.
+        # Let's re-raise or just return.
+        return
 
 
 @app.command(help="Merge MKV files with external SRT subtitles")
